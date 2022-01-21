@@ -48,29 +48,36 @@ func modifyResponse(req *http.Request) func(*http.Response) error {
 	}
 }
 
-var x = 1
-
 func ProxyRequestHandler(proxy *httputil.ReverseProxy, proxy2 *httputil.ReverseProxy, url string) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		x++
-		if x%2 == 0 {
-			proxy.ServeHTTP(w, r)
-		} else {
+		conId := r.Header.Get("ConnectionId")
+
+		if conId == "1" {
 			proxy2.ServeHTTP(w, r)
+		} else {
+			proxy.ServeHTTP(w, r)
 		}
 	}
 }
 
-func main() {
-	proxy, err := NewProxy("http://localhost:5233/test1")
-	if err != nil {
-		panic(err)
+func createCollectionOfProxy(targetHosts []string) []*httputil.ReverseProxy {
+	var proxies []*httputil.ReverseProxy
+	for _, host := range targetHosts {
+		proxy, err := NewProxy(host)
+		if err != nil {
+			log.Fatal(err)
+		}
+		proxies = append(proxies, proxy)
 	}
-	proxy2, err := NewProxy("http://localhost:5233/test2")
-	if err != nil {
-		panic(err)
-	}
+	return proxies
+}
 
-	http.HandleFunc("/", ProxyRequestHandler(proxy, proxy2, ""))
+func main() {
+	var targetHosts []string
+	targetHosts = append(targetHosts, "http://localhost:5233/test1")
+	targetHosts = append(targetHosts, "http://localhost:5233/test2")
+	var proxies = createCollectionOfProxy(targetHosts)
+
+	http.HandleFunc("/", ProxyRequestHandler(proxies[0], proxies[1], ""))
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
